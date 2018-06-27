@@ -1,0 +1,467 @@
+;; This document was OCR'ed from the original "Lisp Machine Hardware Memos"
+;; document found on BitSavers, 19 September 2017.
+;; http://bitsavers.org/pdf/symbolics/3600_series/Lisp_Machine_Hardware_Memos.pdf
+
+This is the layout of the current microword:                    -*-Text-*-
+
+The first line of each description gives bit numbers in the control-memory
+(see the CMMFLD print), signal names, and a very brief description.
+Following that the detailed meaning of the microinstruction field, and
+meanings of the decoded values where appropriate, are given.
+When the same bits are used for more than one thing, they are listed
+twice in succession.
+
+This is accurate as of 12/17/81.
+Updated 7/21/82 for TMC.
+Updated 5/29/84 to be current, but not guaranteed to have been
+updated and checked comprehensively. Probably not up to date for IFU.
+5/29/84 removed the documentation for "temporary mem control" on FEP rev-1.
+6/27/84 added documentation for the IFU
+4/24/85 changed MC Abus source addressing so that U AMRA <9> is 1, it was
+previously a don't care. This is part of IFU/FPA compatability fix (Chas).
+
+11-0            U AMRA <11:0>           A memory read address
+        <11:0> can be an immediate A-memory address
+        <7:0> can be an offset from a base register
+        <8> can select the offset from the macroinstruction instead
+        <10:9> can be U R BASE.
+        <8:0> can select Abus sources on the MC board.
+        <4:0> are the address for the board-ID prom.
+
+10-9            U R BASE <1:0>          A memory base register select
+        Same as U AMRA <10:9>.  Base registers are:
+                0  Stack Pointer
+                1  Frame Pointer
+                2  Extra Base
+                3  INST<7>=1 means Stack Pointer, =0 means Frame Pointer
+                   Also adds 1 if INST<7>=1, thus 177 offset means zero.
+
+13-12           U AMRA SEL <1:0>       Selects interpretation of U AMRA
+        This field controls the A-memory read address and the Abus source.
+
+        0  U AMRA <11:0> is an immediate address.
+        1  LBUS ADDR <11:0> is the A-memory address.  Abus source is main
+           memory unless the bus address lies within A-memory. U AMRA<8:6>
+           should be zero and U R BASE<1:0> should be 3.
+        2  Base register plus offset, within 1K bank selected by STACK BASE.
+           U R BASE <1:0> selects the base, U AMRA <8:0> selects the offset.
+        3  Abus source is not A-memory. If U R BASE <1:0> is 0 or 1, the
+           Abus source is the Stack Pointer or the Frame Eointer (28
+           bits). If U R BASE <1:0> is 3 the Abus source is something on
+           the MC board selected by U AMRA <8:6>:
+             For TMC5:
+                0 memory (MD)
+                1 Lbus device (passes through MD)
+                2 VMA  (reads ASN in bits <35:28> except for IFU)
+                3 map  (for diagnostics, see below)
+                4 PC   (a word address and dtp-even-pc or dtp-odd-pc in the type field)
+
+             For IFU:
+                0 memory-data (MD)
+                1 Other memory-data (OTHER-MD). This is used for
+                        microdevice reads.
+                2 VMA (must use U MEM = Reserve)
+                3 EPC (a word address and dtp-even-pc or dtp-odd-pc in the type field)
+                4 memory-data-advance (Read MD, and increment the VMA.
+                        Change the selected MD to be the other MD)
+                5 PHTA-ASN/IIR If #0=0 then read the PHTA-ASN register.
+                        If #0=1, then read the IIR (for debugging).
+                        Must use U MEM = Reserve
+                6 MAP Read back map contents from selected map (U MEM = Reserve)
+                7 Map Read back map selected by #0 (U MEM = Reserve)
+
+        Note: the command to increment the INST register (immediate operand to
+        current instruction) is U AMRA SEL = 2, U AMRA<8:7> = 3.  In other words,
+        reading base+offset, with offset coming from INST, and an extra bit
+        turned on.  This satisfies the requirements of the array-register microcode.
+
+14              U XYBUS SEL             X & Y Bus select
+        0 X=A, Y=B
+        1 X=B, Y=A
+        (Modified by the Multiply and Crocks to Ybus special functions)
+
+15              U STKP COUNT            Stack Pointer Count
+        A 1 enables the stack pointer to count. It increments if bit 11 of
+        the A memory write address field is 1, decrements if it is 0.
+
+27-16           U AMWA <11:0>           A memory write address
+        <11:0> can be an immediate A-memory address
+        <7:0> can be an offset from a base register
+        <8> can select the offset from the macroinstruction instead
+        <10:9> can be U W BASE
+        <9:0> can be LBUS DEV <9:0>
+        <10> can be memory write enable
+        <11> can be stack-pointer count direction
+        <11> selects which crock feeds Ybus
+        <7:4> can be an extension of the U BMWA field
+        <4:0> can be a byte rotation
+        <9:5> can be a byte size
+
+25-16           LBUS DEV <9:0>          Lbus device address
+        Same as U AMWA <9:0>
+        Bits <9:5> select a board and bits <4:0> select a device and
+        register within that board.  This is for microdevice commands,
+        including operation of DNA devices by their micro tasks.
+
+26-25           U W BASE <1:0>          A memory base register select
+        Same as U AMWA <10:9>. Base registers are:
+                0  Stack Pointer
+                1  Frame Pointer
+                2  Extra Base
+                3  INST<7>=1 means Stack Pointer, =0 means Frame Pointer
+                   Also adds 1 if INST<7>=1, thus 177 offset means zero.
+
+27              --                      Stack-pointer count direction
+        Same as U AMWA <11>
+        1 if the stack-pointer is to increment, 0 if it is to decrement.
+        Only takes effect if U STKP COUNT is on.
+
+29-28           U AMWA SEL <1:0>        Selects interpretation of U AMWA
+        This field controls the A-memory write address.
+
+        0  U AMWA <11:0> is an immediate address.
+        1  Base register plus offset, within 1K bank selected by STACK BASE.
+           U W BASE <1:0> selects the base, U AMWA (8:0) selects the offset.
+        2  The A-memory write address is the same as the read address.
+           This is mainly useful when the U AMWA field is busy being the
+           Lbus device address or the byte rotation and size.
+        3  LBUS ADDR <11:0> is the A-memory address. However, the write
+           into A memory is suppressed unless U AMWA <10> = 1 and the bus
+           address lies within A-memory.
+           U AMWA <9:0> are the microdevice address, with special values
+           write registers on the MC board (and the map). The special values use slot
+           number 37 in the device address.
+           The TMC board doesn't look at U AMWA SEL nor at U AMWA <10>, however
+           these are used to tell the DP a write into main memory or microdevice
+           write is being done instead of an A-mem write.
+
+31-30           U SEQ <1:0>             Sequencer Function
+
+        0  No special operation.
+        1  Pushj.  The control-stack pointer is incremented.
+        2  Dismiss.  The current task is dismissed.  Tasks 1-7 run two
+           more instructions, tasks 8-15 run one more instruction.
+           (That's inaccurate; see the microcode manual.)
+        3  Popj.  The control-stack pointer is decremented.
+
+30-32           U BMRA <7:0>            B memory read address
+        Controls the Bbus source.
+        Locations 360-377 are the normal scratchpad locations.
+        Locations 10-357 are constants (require special function to write).
+        Location 0 (also 1-3) are unsigned immediate macroinstruction.
+        Location 4 (also 5-7) are signed immediate macroinstruction.
+        The immediate data come from INST <7:0>.  INST <7> is the sign bit.
+
+43-40           U BMWA <3:0>            B memory write address
+        Normally locations 360-377 are written.  Some location is always
+        written unless the instruction is NOPed.  The special function
+        Extended BMWA takes bits 7-4 of the address from U AMWA <7:4>.
+
+44              U BMEM FROM XBUS        B memory write data select
+        0  Write data comes from 0BUS<35:0>
+        1  Write data comes from ABUS<35:32>|XBUS<31:0>
+
+
+47-45           U MEM <2:0>             Memory control function
+        In addition to this field, the memory control is also controlled
+        by SPEC, AMRA, and AMWA.  This field just exists for the operations
+        which need to be done in parallel with other things.
+
+        The following are the functions implemented by the TMC and
+        IFU boards:
+
+          0 nothing (With the IFU this allows the prefetcher to start a
+                request in this cycle) 3
+          1 microdevice operation
+            If Abus source is Lbus device, it's a read
+                (I.E. if U AMWA 10 is deasserted)
+            If Abus source is memory, it’s a write with data from memory
+                  (e.g. used when following pointers to load VMA from MD)
+            Otherwise it’s a write with data from data path
+          2 start memory read
+          3 start memory write
+            (data must be on data path now unless it's a DMA write)
+          4 TMC: increment VMA (don’t use randomly, affects vma-offset
+                logic)
+            IFU: Reserve. This causes no memory control operation, but
+                inhibits the prefetcher from requesting in this cycle.
+          5 load VMA from Obus (via Lbus)
+          6 block read (start read and on the TMC increment VMA. On IFU
+                VMA increments only when the MD containing the data for
+                this request is consumed by reading MEMORY-DATA-ADVANCE)
+          7 block write (start write and increment VMA)
+
+52-48           U SPEC <4:0>            Special Function
+        This field enables a whole bunch of random kludges and features
+        which didn't deserve their own microcode fields.
+
+        In these descriptions, "#n" refer: to U MAGIC <n>, bit n of
+        the magic number field.
+
+        0   R register gets Obus <4:0>.  #3 causes it to load from a function
+            of the dispatch instead (this is for arrays).
+        1   S register gets Obus <4:0>.
+        2   Stack pointer gets Obus <27:0>.
+        3   Frame pointer gets Obus <27:0>.
+        4   Extra Base gets Obus <9:0>
+        5   Data path control register gets Obus <7:0>:
+                <1:0> = Stack Base = bits <11:10> of base/offset Amem address
+                <2> = Sequence Break flag
+                <3> = Trace Flag 1
+                <4> = Trace Flag 2
+                <7:5> not yet assigned
+        6   Write special data path map memories:
+                #0=0 => TYPE [U TYPE MAP SEL <5:0>, ABUS <33:28>] := BBUS <3:0>
+                #1=0 => GC [ABUS <27:14>] := BBUS <3:0>
+        7   [Rev-2 DP: Temporary instruction registers gets Obus <7:0>.]
+            Rev-3 DP: Clear stack offset.
+        10  Arithmetic Trap Enable
+            #0 enables a trap if the Cond bit is set in the type map, and
+            #1 enables a trap if the Bbus data type is not fixnum.
+            #2 enables weird ALU functions (second set of 16)
+            #3 (reserved for future use)
+        11  Trap if Cond bit set in type map
+        12  Trap if Cond bit set in type map or BBUS type not fixnum
+        13  Multiply with type check (combination of 11, 12, and 17)
+        14  Crocks decoded by the magic number field:
+            1-7: GC Write Trap Enable
+                #0  Slow jump to NAF if GC map says Abus points to any stack
+                #1  Slow jump to NAF if GC map says Abus points to stack other
+                    than the current stack.
+                #2  (spare, needed anyway due to PAL limitations}
+            10: Extended B-memory write address (allows writing all 256 locations)
+            11-17: (reserved for future crocks)
+        15  ALUB Sign Hack (if the shifter is used to LDB out the sign bit
+                of the Ybus, it gets the complement of the sign bit instead).
+        16  Crocks to Ybus.  U AMWA <11> selects between two words of
+                miscellaneous fields as Ybus sources.  See the DPYSL2 print.
+                It has to be possible to read the crocks without using the
+                magic number, because you always extract a byte field, which
+                requires the magic number and U AMWA <9: 0>.
+        17  Multiply
+            #0 Multiplicand from Ybus <31:16>
+            #1 Multiplier from Xbus <15:0>
+            #2 Multiplier is signed (2's complement)
+               Without #1, enables product onto Xbus.
+            #3 Multiplicand is signed (2's complement)
+        20  No special function. This is the default value for this field.
+        21  Addr from Abus (physical address memory reference)
+        22  Inhibit page tags (implies addr-from-abus )
+        23  DMA (implies 21 and 22)
+        24  Use PHTA (map VMA through PHTC hash box instead of map cache)
+        25  Check write access
+        26  (not used)
+        27  IFU control
+            TMC5: #<1:0> =
+                0: Load PC (must be given simultaneously with load VMA)
+                        (This must be code 0, for (assign pc (word-pc ...)).)
+                1: Load PC and force to odd halfword
+                        (must be given simultaneously with lead VMA)
+                2: Start IFU (START-MEMORY of instruction-fetch)
+                3: Increment PC (skip an instruction)
+            IFU: #<3:0>
+                0: Load PC. (must be given simultaneoously with loading
+                        the VMA, and resets the prefetcher and IFU)
+                1: Load odd PC. Same, but force PC to be an Odd PC
+                2: IFU Skip. Load IPC with incremented IPC. This should
+                        only be used in hold mode
+                3: IFU Skip Last. Same, but clear hold mode.
+                4: Branch. Given on cycle where DP COND is the branch
+                        condition.
+                5: Write Decode LH. Given on on DATA cycle, writes IFU
+                        "left half" decode memory from the memory data.
+                6: Write Decode RH. Given an on DATA cycle, writes IFU
+                        "right half" decode memory from the memory data.
+                7: Reset MD Pipeline. Clears the MD loaded flags, and
+                        flushes all requests in the pipeline.
+                10: Restart. Given when doing START-READ for instruction
+                        (Note: can’t do NEXT-INSTRUCTION at the same time)
+                11: Restart/Hold. Same, but enter hold mode
+                12: Set Hold Mode
+                13: Not used
+                14: Advance. Advance to next byte in multi-byte instruction
+                15: Advance Last. Same, but clear hold mode on last byte
+                16: Accept PC. Load EPC from IPC (no other effect)
+                17: Not used
+
+        30  Arithmetic Trap Enable with Dispatch
+            If a trap occurs. bits <11:10> of the trap address .
+            come from Abus <33:32> and bits <9:8> from Bbus <33:32>.
+            Magic field same as function 10.
+        31  Halt.  Machine stops after executing this instruction.
+        32  NPC Magic.  Changes the meaning of U NPC SEL, also decodes
+            magic number hits 1,0 as:
+                0  not useful (drives garbage onto Lbus and into NPC in rev-2 SQ)
+                1  NPC input to Lbus (use with microdevice read)
+                   With rev-3 SQ, Lbus<19:16> get CSP, Lbus<23:20> get CUR TASK
+                2  Lbus to NPC (use with microdevice write)
+                3  nothing special (use to load NPC from CTOS)
+        33  Awaken Task;  U MAGIC <1:0> select task 1, 2, 5, or 6.
+        34  Write Task.  Obus<35:32> task number, <31:0> task state.
+        35  Disable tasking. Must be used twice in a row to work.
+            (See the microcode manual for further discussion of the hair...)
+        36-37  (reserved for the SQ board)
+
+56-53           U MAGIC <3:0>           Magic number
+        A 4-bit number used in many different ways.  Typically this
+        is enabled by special functions.  The bits are described with
+        the microcode fields that enable them.
+
+        The bottom 3 bits select a dispatch, which may optionally be
+        loaded into NPC and then branched to on the following cycle.
+            0  ALUB <3:0> (bottom bits of shifter output)
+            1  ABUS <35:34> (Cdr code of A bus)
+            2  ABUS <31:28> (low type code, floating normalize, array registers)
+            3  ABUS <25:22> (arrays)
+            4  ABUS <21:18> (arrays)
+            5  ABUS <2:0>   (8-way unrolled loops)
+            6  BBUS <31:30>|ABUS<31:30>  (floating-point tags)
+            7  (not yet assigned)
+
+61-57           U COND SEL <4:0>        Condition Select
+        Select condition for skipping or trapping
+        Also used as byte size in some cases.
+        0 :     CDR of the A bus is not = 0
+        1 :     CDR of the A bus is not = 1
+        2 :     CDR of the A bus is not = 2
+        3 :     CDR of the A bus is not = 3
+        4 :     From TYPE map
+        5 :     B Bus type is not fixnum
+        6 :     ALUB 0  (low bit out of shifter)
+        7 :     YBUS 31 (Ybus < 0)
+        10:     -GC TEMP
+        11:     -GC THIS STACK
+        12:     -GC OTHER STACK
+        13:     ALU=0 (Bits 0-27 i.e. pointer field)
+        14:     ALU not =0 (Bits 0-31 i.e. immediate number field)
+        15:     ALU not =0 (Bits 0-33 i.e. all but cdr code)
+        16:     not 28 bit carry
+        17:     not 32 bit carry
+        20:     ALU 31 (Obus < O)
+        21:     Sequence Break
+        22:     Trace Flag 1
+        23:     Trace Flag 2
+        24:     -LBUS DEV COND (from selected micro device)
+        25:     MC COND
+        26:
+        27:
+        30:
+        31:
+        32:
+        33:
+        34:
+        35:
+        36:
+        37:
+
+63-62       U COND FUNC                 Condition Function
+        0  Ignore the condition.
+        1  Skip if conditiqn false.
+           Bit 12 of the next microinstruction address comes from -COND.
+        2  Trap if condition true.  Trap address is NAF.
+        3  Trap if condition false.  Trap address is NAF.
+
+67-64       U ALU <3:0>                 Arithmetic/Logic Function
+        Provides the mode, function, and carry for the ALU.  Also provides
+        for the signed-compare and trap-if-overflow features.  These 4
+        bits together with the special function "weird alu fcn" are
+        looked up in a 32x8 prom.
+        U ALU <3:0>     Normal func     Weird func
+        0               Xbus            X+1-overflow (doesn't work)
+        1               Alub            X-1-overflow (doesn't work)
+        2               X+1             X+Y+overflow
+        3               X-1             X-Y-overflow
+        4               X+Y             X-Y-signed
+        5               X-Y             X-Y-1-signed
+        6               X+Y+1           NAND
+        7               X-Y-1           ANDCY
+        10              AND
+        11              IOR
+        12              XOR
+        13
+        14
+        15
+        16
+
+69-68       U BYTE F <1:0>              Byte Function
+        Controls the shifter and masher, which provide the B input to ALU.
+        This field is amplified by MAGIC, COND SEL, and AMWA as required.
+        R is the number of bits of left rotation of the Ybus.
+        S is one less than the number of bits selected by the mask, which
+          come from the rotated Ybus.
+        Merge means that hits not selected by the mask come from Xbus, otherwise
+          they are 0.
+        Rotate Mask means that the mask is rotated by the same amount as the
+          Ybus (for dpb).  Otherwise the mask is right-aligned (for ldb).
+        0  Shifter passes Ybus unchanged (R=0, S=37)
+        1  Weird kludges for multiplication and the PC, decoded from #3
+           #2 = 0 => no rotate-mask, no merge, S=37, R from following table:
+                0 -> 17         1 -> 16         2 -> 1          3 -> 0
+                10 -> 37        11 -> 36        12 -> 21        13 -> 20
+                Only codes 2, 3, 10, and 13 are used I believe *
+                     With code 13, S=17 and rotate-mask are specified.  These
+                     are for the first cycle of a multiply;
+                    Actually there is room for 8 random functions here.
+           #2 = 1 => R=20,S=17 (i.e. operate on halfwords)
+                     #3 => rotate-mask.  No merge.
+                     #0,#1 may not be used (tied up by multiply)
+        2  R=0, S=U COND SEL, no merge, rotate-mask don't care
+           This extract: a right~adjusted byte from the Ybus.
+        3  So-called general case. Merge and rotate-mask from #2,3.
+           #1,#0:
+                0  R,S from U AMWA <9:0>
+                1  R from RREG, S from COND SEL
+                2  R from RREG, S from SREG
+                3  R,S from INST (high 2 bits of S from COND SEL)
+           SREG without RREG does not appear to be used
+
+72-70           U OBUS CDR <2:0>        Obus CDR code select
+        0  Abus <35:34>      (cdr code of Abus)
+        1  Bbus <35:34>      (cdr code of Bbus)
+        2  Bbus <7:6>        (for certain subprimitives)
+        3  (illegal)
+        4-7 Constant 0-3
+
+75-73           U OBUS HTYPE <2:0>      Obus high type field select
+        0  Abus <33:32>     (high type field of Abus)
+        1  Bbus <33:32>     (high type field of Bbus)
+        2  Bbus <5:4>       (for certain subprimitives)
+        3  (illegal)
+        4-7 Constant 0-3
+
+76              U OBUS LTYPE SEL        Obus low type field select
+        0  Magic number field  (i.e. 28-bit operatien)
+        1  Alu output  (i.e. 32-bit operation)
+
+78-77           U CPC SEL <1:0>         Next microprogram address select
+        0  NAF (microinstruction next-address field)
+        1  CTOS (top of control stack, or IFU dispatch address)
+        2  NPC (next microinstruction, or dispatch)
+        3  (not used currently)
+
+79              U NPC SEL               Next next micro address select
+        Normally:
+          0  Dispatch (NAF except in bits 8-11)
+          1  Next CPC+1 (next CPC controlled by U CPC SEL)
+        With SPEC NPC MAGIC:
+          0 CPC (address of current microinstruction, for traps mainly)
+          1 CTOS (restore NPC from top-of stack)
+          (except that the NPC input can be forced from the Lbus instead)
+
+93-80           U NAF <13:0>            Next Address Field
+        Provides a microcode jump address, subroutine address, or
+        trap handler address.
+
+95-94           U SPEED (1:0)           Clock speed control
+        180, 210, 225, 255 ns (I think)
+
+101-96          U TYPE MAP SEL <5:0>    Type map select
+        Selects one of 64 type maps to decode Abus <33:28>
+
+109-102         U AU OP <7:0>           FPA control
+        See the FPA if you want to know what these do.
+        In a machine without an EPA, they are not connected to anything.
+
+110             U SPARE                 spare
+
+111             U PARITY BIT            Parity bit
