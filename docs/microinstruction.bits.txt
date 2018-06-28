@@ -158,7 +158,7 @@ previously a don't care. This is part of IFU/FPA compatability fix (Chas).
         Extended BMWA takes bits 7-4 of the address from U AMWA <7:4>.
 
 44              U BMEM FROM XBUS        B memory write data select
-        0  Write data comes from 0BUS<35:0>
+        0  Write data comes from OBUS<35:0>
         1  Write data comes from ABUS<35:32>|XBUS<31:0>
 
 
