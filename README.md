@@ -13,9 +13,26 @@ Last Updated: 27-June-2018
 Usage
 -----
 
-    uc-explorer microcode_file > text_file
+Symbolics Microcode Explorer is an interactive, command-driven program.
 
-WARNING: This produces around 4.5MB of output!
+It takes one argument, a microcode file:
+
+    uc-explorer <microcode_file>
+
+From there, you are presented with a prompt:
+
+    uc-explorer>
+    
+Valid commands are:
+
+
+  - **help**: Get a short help summary
+  - **show**: Show summary info about the microcode file
+  - **dump &lt;filename&gt;**:  Disassemble and dump to a file
+  - **quit**: Quit the program
+   
+
+WARNING: The disassembly process produces around 4.5MB of output!
 
 License
 -------

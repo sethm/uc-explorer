@@ -21,11 +21,137 @@
 
 extern crate clap;
 use clap::{Arg, App};
-use std::error::Error;
 use std::fs::File;
 use std::path::Path;
+use std::error::Error;
+use std::io;
+use std::io::Write;
+use std::fmt;
+use std::vec::Vec;
 
 pub mod ucode;
+
+pub enum HandlerError {
+    Io(io::Error),
+    ParseError,
+    Terminal
+}
+
+pub enum HandlerResult {
+    Handled,
+    Quit,
+}
+
+impl From<io::Error> for HandlerError {
+    fn from(err: io::Error) -> HandlerError {
+        HandlerError::Io(err)
+    }
+}
+
+impl fmt::Display for HandlerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            HandlerError::Io(ref err) => err.fmt(f),
+            HandlerError::ParseError => write!(f, "Parse Error"),
+            HandlerError::Terminal => write!(f, "Terminal Error")
+        }
+    }
+}
+
+fn do_dump(microcode: &mut ucode::Microcode, words: Vec<&str>) -> Result<HandlerResult, HandlerError> {
+    if words.len() == 2 {
+        println!("Dumping to file {}...", words[1]);
+
+        let mut file = match File::create(&words[1]) {
+            Ok(file) => file,
+            Err(why) => {
+                println!(
+                    "Couldn't open input file {}: {}",
+                    words[1],
+                    why.description()
+                );
+                return Err(HandlerError::Io(why))
+            }
+        };
+
+        // TODO: There must be a better way to write this.
+        match write!(file, "{}", microcode) {
+            Ok(_) => {},
+            Err(e) => return Err(HandlerError::Io(e))
+        }
+
+    } else {
+        println!("usage: dump [filename]");
+    }
+
+    Ok(HandlerResult::Handled)
+}
+
+fn do_show(microcode: &mut ucode::Microcode, _words: Vec<&str>) -> Result<HandlerResult, HandlerError> {
+    println!("Loaded From:     {}", microcode.name);
+    println!("Version:         {}", microcode.version);
+    println!("Commend:         {}", microcode.comment);
+    println!("A-Mem Size:      {} words", microcode.a_mem.len());
+    println!("B-Mem Size:      {} words", microcode.b_mem.len());
+    println!("C-Mem Size:      {} words", microcode.c_mem.len());
+    println!("Type Map Size:   {} words", microcode.type_map.len());
+    println!("Pico Store Size: {} words", microcode.pico_store.len());
+
+    Ok(HandlerResult::Handled)
+}
+
+// TODO: Automatically generate help from command list.
+fn do_help() -> Result<HandlerResult, HandlerError> {
+    println!("help                Show this help.");
+    println!("dump [file]         Disassemble to file.");
+    println!("show                Show microcode overview.");
+    println!("q,quit              Leave the shell.");
+    Ok(HandlerResult::Handled)
+}
+
+fn handle_command(microcode: &mut ucode::Microcode, input: &str) -> Result<HandlerResult, HandlerError> {
+    let words = input.split(" ").collect::<Vec<&str>>();
+
+    if words.len() == 0 {
+        Err(HandlerError::ParseError)
+    } else {
+        match words[0] {
+            "quit" => Ok(HandlerResult::Quit),
+            "q"    => Ok(HandlerResult::Quit),
+            "help" => do_help(),
+            "dump" => do_dump(microcode, words),
+            "show" => do_show(microcode, words),
+            ""     => Ok(HandlerResult::Handled),
+            _      => Err(HandlerError::ParseError)
+        }
+    }
+}
+
+/// Main processing loop
+fn process_loop(microcode: &mut ucode::Microcode) -> Result<HandlerResult, HandlerError> {
+    loop {
+        let mut input = String::new();
+        print!("uc-explorer> ");
+        io::stdout().flush()?;
+        match io::stdin().read_line(&mut input) {
+            Ok(_) => {
+                let trimmed = input.trim();
+                match handle_command(microcode,trimmed) {
+                    Ok(HandlerResult::Quit) => return Ok(HandlerResult::Quit),
+                    Ok(_) => {},
+                    Err(HandlerError::Io(_)) => {
+                        println!("Command failed.");
+                    },
+                    Err(HandlerError::ParseError) => {
+                        println!("?");
+                    }
+                    Err(_) => return Err(HandlerError::Terminal),
+                }
+            },
+            Err(_) => return Err(HandlerError::Terminal)
+        }
+    }
+}
 
 fn main() {
     let app = App::new("Symbolics Microcode Explorer")
@@ -57,13 +183,14 @@ fn main() {
         }
     };
 
-    let mut state = ucode::Microcode::new(&file);
+    let mut state = ucode::Microcode::new(infile, &file);
 
     match state.load() {
         Ok(()) => {
-            println!("--------------------= STATE =------------------------");
-            println!("{}", state);
-            println!("-----------------------------------------------------");
+            match process_loop(&mut state) {
+                Ok(_) => println!("Good bye"),
+                Err(e) => eprintln!("Error: {}", e)
+            }
         },
         Err(reason) => println!("Unable to parse microcode: {}", reason),
     }

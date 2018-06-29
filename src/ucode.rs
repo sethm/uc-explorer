@@ -155,12 +155,12 @@ const SEC_TYPEMAP: u8 = 7;
 const SEC_EOF: u8 = 8;
 const SEC_PICOSTORE: u8 = 10;
 
-struct ABWord {
+pub struct ABWord {
     address: u16,
     data: u64,
 }
 
-struct CWord {
+pub struct CWord {
     address: u16,
     data_l: u64,
     data_h: u64,
@@ -178,7 +178,7 @@ impl CWord {
 
 /// All the fields of a Microinstruction
 #[allow(dead_code)]
-struct MicroInstruction {
+pub struct MicroInstruction {
     u_amra: u16,           // bits 11-0:    A Mem Read Address (0-7777)
     u_r_base: u8,          // bits 10-9:    A Mem R Base Register Select (0-3)
     u_amra_sel: u8,        // bits 13-12:   A Mem Read Address interpretation (0-3)
@@ -256,43 +256,44 @@ impl MicroInstruction {
 }
 
 #[allow(dead_code)]
-struct TypeWord {
+pub struct TypeWord {
     data: u8,
 }
 
 #[allow(dead_code)]
-struct PicoStoreWord {
+pub struct PicoStoreWord {
     address: u16,
     data: u32,
 }
 
-struct Mem<T> {
-    mem: Vec<T>,
+pub struct Mem<T> {
+    pub mem: Vec<T>,
 }
 
 impl<T> Mem<T> {
-    fn new() -> Mem<T> {
+    pub fn new() -> Mem<T> {
         Mem { mem: Vec::new() }
     }
 
-    fn push(&mut self, word: T) {
+    pub fn push(&mut self, word: T) {
         self.mem.push(word);
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.mem.len()
     }
 }
 
 pub struct Microcode<'a> {
-    file: &'a File,
-    version: u16,
-    comment: String,
-    a_mem: Mem<ABWord>,
-    b_mem: Mem<ABWord>,
-    c_mem: Mem<CWord>,
-    type_map: Mem<TypeWord>,
-    pico_store: Mem<PicoStoreWord>,
+    pub name: &'a str,
+    pub file: &'a File,
+    pub version: u16,
+    pub comment: String,
+    pub a_mem: Mem<ABWord>,
+    pub b_mem: Mem<ABWord>,
+    pub c_mem: Mem<CWord>,
+    pub type_map: Mem<TypeWord>,
+    pub pico_store: Mem<PicoStoreWord>,
 }
 
 impl<'a> fmt::Display for Microcode<'a> {
@@ -356,9 +357,9 @@ impl fmt::Debug for MicroInstruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "A Mem Read Address:           {:04o}\n\
-             A Mem Base Register Select:   {:o}\n\
-             A Mem Interpretation:         {:o}\n\
+            "U AMRA:          {:04o}\n\
+             > U R BASE:      {:o}\n\
+             U AMRA SEL:      {:o}\n\
              U XYBUS SEL:     {:o}\n\
              U STKP CNT:      {:o}\n\
              U AMWA:          {:04o}\n\
@@ -444,9 +445,10 @@ impl fmt::Debug for Mem<CWord> {
 
 /// Control store for Microcode
 impl<'a> Microcode<'a> {
-    pub fn new(file: &'a File) -> Microcode<'a> {
+    pub fn new(name: &'a str, file: &'a File) -> Microcode<'a> {
         Microcode {
-            file: file,
+            name,
+            file,
             version: 0,
             comment: String::new(),
             a_mem: Mem::new(),
