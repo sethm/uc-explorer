@@ -19,11 +19,12 @@
 ///
 
 extern crate clap;
+extern crate shellexpand;
+
 use std::fmt;
 use std::fs::File;
 use std::io::Error;
 use std::io::Read;
-use std::path::Path;
 
 //
 // Error handling
@@ -256,10 +257,12 @@ impl MicroInstruction {
     }
 }
 
+#[allow(dead_code)]
 pub struct TypeWord {
     data: u8,
 }
 
+#[allow(dead_code)]
 pub struct PicoStoreWord {
     address: u16,
     data: u32,
@@ -474,10 +477,11 @@ impl Microcode {
     pub fn load(&mut self, path: &str) -> Result<(), MicrocodeError> {
         self.reset();
 
-        self.path = Some(path.to_string());
+        let expanded = shellexpand::tilde(path);
 
-        let p = Path::new(path);
-        let file = File::open(&p)?;
+        self.path = Some(expanded.to_string());
+
+        let file = File::open(&expanded.to_string())?;
 
         self.read_header(&file)?;
         self.read_version(&file)?;
@@ -489,6 +493,13 @@ impl Microcode {
         self.read_pico_store_or_eof(&file)?;
 
         Ok(())
+    }
+
+    pub fn path(&mut self) -> &str {
+        match self.path {
+            Some(ref mut s) => s.as_str(),
+            None => "",
+        }
     }
 
     /// Read and validate the microcode header.

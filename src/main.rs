@@ -18,36 +18,37 @@
 /// along with The Symbolics Microde Explorer.  If not, see
 /// <https://www.gnu.org/licenses/>.
 ///
-
 extern crate clap;
 extern crate rustyline;
 
-use clap::{Arg, App};
+pub mod ucode;
 
+use clap::{App, Arg};
+
+use rustyline::completion::FilenameCompleter;
 use rustyline::hint::Hinter;
 use rustyline::{CompletionType, Config, EditMode, Editor};
-use rustyline::completion::FilenameCompleter;
 
 use std::fmt;
-use std::io;
 use std::fs::File;
+use std::io;
 use std::io::Write;
 use std::vec::Vec;
-
-pub mod ucode;
+use ucode::{Microcode, MicrocodeError};
 
 struct Hints {}
 
 impl Hinter for Hints {
-    fn hint(&self, line: &str, _pos: usize) -> Option<String> {
+    fn hint(&self, _line: &str, _pos: usize) -> Option<String> {
         None // Hints are not yet implemented
     }
 }
 
 pub enum HandlerError {
     Io(io::Error),
+    Load(MicrocodeError),
     ParseError,
-    Terminal
+    Terminal,
 }
 
 pub enum HandlerResult {
@@ -61,28 +62,34 @@ impl From<io::Error> for HandlerError {
     }
 }
 
+impl From<MicrocodeError> for HandlerError {
+    fn from(err: MicrocodeError) -> HandlerError {
+        HandlerError::Load(err)
+    }
+}
+
 impl fmt::Display for HandlerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             HandlerError::Io(ref err) => err.fmt(f),
+            HandlerError::Load(ref err) => err.fmt(f),
             HandlerError::ParseError => write!(f, "Parse Error"),
-            HandlerError::Terminal => write!(f, "Terminal Error")
+            HandlerError::Terminal => write!(f, "Terminal Error"),
         }
     }
 }
 
-fn do_dump(microcode: &mut ucode::Microcode, words: Vec<&str>) -> Result<HandlerResult, HandlerError> {
+fn do_dump(ucode: &mut Microcode, words: Vec<&str>) -> Result<HandlerResult, HandlerError> {
     if words.len() == 2 {
         println!("Dumping to file {}...", words[1]);
 
         let mut file = File::create(&words[1])?;
 
         // TODO: There must be a better way to write this.
-        match write!(file, "{}", microcode) {
-            Ok(_) => {},
-            Err(e) => return Err(HandlerError::Io(e))
+        match write!(file, "{}", ucode) {
+            Ok(_) => {}
+            Err(e) => return Err(HandlerError::Io(e)),
         }
-
     } else {
         println!("usage: dump [filename]");
     }
@@ -90,24 +97,33 @@ fn do_dump(microcode: &mut ucode::Microcode, words: Vec<&str>) -> Result<Handler
     Ok(HandlerResult::Handled)
 }
 
-fn do_show(microcode: &mut ucode::Microcode, _words: Vec<&str>) -> Result<HandlerResult, HandlerError> {
-    if microcode.path.is_some() {
-        println!("Loaded From:     {:?}", microcode.path);
-        println!("Version:         {}", microcode.version);
-        println!("Commend:         {}", microcode.comment);
-        println!("A-Mem Size:      {} words", microcode.a_mem.len());
-        println!("B-Mem Size:      {} words", microcode.b_mem.len());
-        println!("C-Mem Size:      {} words", microcode.c_mem.len());
-        println!("Type Map Size:   {} words", microcode.type_map.len());
-        println!("Pico Store Size: {} words", microcode.pico_store.len());
+fn do_show(ucode: &mut Microcode, _words: Vec<&str>) -> Result<HandlerResult, HandlerError> {
+    if ucode.path.is_some() {
+        println!("Loaded From:     {:?}", ucode.path);
+        println!("Version:         {}", ucode.version);
+        println!("Commend:         {}", ucode.comment);
+        println!("A-Mem Size:      {} words", ucode.a_mem.len());
+        println!("B-Mem Size:      {} words", ucode.b_mem.len());
+        println!("C-Mem Size:      {} words", ucode.c_mem.len());
+        println!("Type Map Size:   {} words", ucode.type_map.len());
+        println!("Pico Store Size: {} words", ucode.pico_store.len());
+    } else {
+        println!("No microcode is loaded.");
     }
 
     Ok(HandlerResult::Handled)
 }
 
-fn do_load(microcode: &mut ucode::Microcode, words: Vec<&str>) -> Result<HandlerResult, HandlerError> {
+fn do_load(ucode: &mut Microcode, words: Vec<&str>) -> Result<HandlerResult, HandlerError> {
     if words.len() == 2 {
-        println!("Loading file {}", words[1]);
+        match ucode.load(words[1]) {
+            Ok(()) => {
+                println!("Loaded file {}", ucode.path());
+            },
+            Err(e) => {
+                println!("Cannot load file. {}", e);
+            }
+        }
     } else {
         println!("usage: load [filename]");
     }
@@ -125,7 +141,7 @@ fn do_help() -> Result<HandlerResult, HandlerError> {
     Ok(HandlerResult::Handled)
 }
 
-fn handle_command(microcode: &mut ucode::Microcode, input: &str) -> Result<HandlerResult, HandlerError> {
+fn handle_command(ucode: &mut Microcode, input: &str) -> Result<HandlerResult, HandlerError> {
     let words = input.split(" ").collect::<Vec<&str>>();
 
     if words.len() == 0 {
@@ -133,20 +149,19 @@ fn handle_command(microcode: &mut ucode::Microcode, input: &str) -> Result<Handl
     } else {
         match words[0] {
             "quit" => Ok(HandlerResult::Quit),
-            "q"    => Ok(HandlerResult::Quit),
+            "q" => Ok(HandlerResult::Quit),
             "help" => do_help(),
-            "dump" => do_dump(microcode, words),
-            "show" => do_show(microcode, words),
-            "load" => do_load(microcode, words),
-            ""     => Ok(HandlerResult::Handled),
-            _      => Err(HandlerError::ParseError)
+            "dump" => do_dump(ucode, words),
+            "show" => do_show(ucode, words),
+            "load" => do_load(ucode, words),
+            "" => Ok(HandlerResult::Handled),
+            _ => Err(HandlerError::ParseError),
         }
     }
 }
 
 /// Main processing loop
-fn process_loop(microcode: &mut ucode::Microcode) {
-
+fn process_loop(ucode: &mut Microcode) {
     let config = Config::builder()
         .completion_type(CompletionType::List)
         .edit_mode(EditMode::Emacs)
@@ -162,18 +177,18 @@ fn process_loop(microcode: &mut ucode::Microcode) {
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_ref());
-                match handle_command(microcode, line.as_ref()) {
+                match handle_command(ucode, line.as_ref()) {
                     Ok(HandlerResult::Quit) => {
                         // Quit detected. Break from loop.
                         break;
                     }
                     Ok(_) => {
                         // Normal result. Continue looping.
-                    },
+                    }
                     Err(HandlerError::Io(_)) => {
                         // IO error. Display failure, keep looping.
                         println!("Command failed.");
-                    },
+                    }
                     Err(HandlerError::ParseError) => {
                         // Parse error. Display failure, keep looping.
                         println!("?");
@@ -183,8 +198,8 @@ fn process_loop(microcode: &mut ucode::Microcode) {
                         break;
                     }
                 }
-            },
-            Err(_) => { break }
+            }
+            Err(_) => break,
         }
     }
 }
@@ -194,20 +209,25 @@ fn main() {
         .version("1.0")
         .author("Seth Morabito <web@loomcom.com>")
         .about("Parses and displays details of Symbolics 3600 microcode")
-        .arg(
-            Arg::with_name("INPUT")
-                .help("Input file")
-                .required(true)
-                .index(1),
-        )
+        .arg(Arg::with_name("file")
+             .short("f")
+             .help("Input file")
+             .takes_value(true))
         .get_matches();
 
-    let infile = app.value_of("INPUT").unwrap();
+    let mut state = Microcode::new();
 
-    let mut state = ucode::Microcode::new();
+    let file = app.value_of("file");
 
-    match state.load(infile) {
-        Ok(()) => process_loop(&mut state),
-        Err(reason) => println!("Unable to parse microcode: {}", reason),
+    match file {
+        Some(f) => {
+            match state.load(f) {
+                Ok(()) => process_loop(&mut state),
+                Err(reason) => println!("Unable to parse microcode: {}", reason),
+            }
+        },
+        None => {
+            process_loop(&mut state);
+        }
     }
 }
