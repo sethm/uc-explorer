@@ -19,10 +19,11 @@
 ///
 
 extern crate clap;
+use std::fmt;
+use std::fs::File;
 use std::io::Error;
 use std::io::Read;
-use std::fs::File;
-use std::fmt;
+use std::path::Path;
 
 //
 // Error handling
@@ -255,12 +256,10 @@ impl MicroInstruction {
     }
 }
 
-#[allow(dead_code)]
 pub struct TypeWord {
     data: u8,
 }
 
-#[allow(dead_code)]
 pub struct PicoStoreWord {
     address: u16,
     data: u32,
@@ -275,6 +274,10 @@ impl<T> Mem<T> {
         Mem { mem: Vec::new() }
     }
 
+    pub fn clear(&mut self) {
+        self.mem.clear();
+    }
+
     pub fn push(&mut self, word: T) {
         self.mem.push(word);
     }
@@ -284,9 +287,8 @@ impl<T> Mem<T> {
     }
 }
 
-pub struct Microcode<'a> {
-    pub name: &'a str,
-    pub file: &'a File,
+pub struct Microcode {
+    pub path: Option<String>,
     pub version: u16,
     pub comment: String,
     pub a_mem: Mem<ABWord>,
@@ -296,7 +298,7 @@ pub struct Microcode<'a> {
     pub pico_store: Mem<PicoStoreWord>,
 }
 
-impl<'a> fmt::Display for Microcode<'a> {
+impl fmt::Display for Microcode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -444,11 +446,10 @@ impl fmt::Debug for Mem<CWord> {
 }
 
 /// Control store for Microcode
-impl<'a> Microcode<'a> {
-    pub fn new(name: &'a str, file: &'a File) -> Microcode<'a> {
+impl Microcode {
+    pub fn new() -> Microcode {
         Microcode {
-            name,
-            file,
+            path: None,
             version: 0,
             comment: String::new(),
             a_mem: Mem::new(),
@@ -459,29 +460,47 @@ impl<'a> Microcode<'a> {
         }
     }
 
-    pub fn load(&mut self) -> Result<(), MicrocodeError> {
-        self.read_header()?;
-        self.read_version()?;
-        self.read_comment()?;
-        self.read_a_mem()?;
-        self.read_b_mem()?;
-        self.read_c_mem()?;
-        self.read_type_map()?;
-        self.read_pico_store_or_eof()?;
+    fn reset(&mut self) {
+        self.path = None;
+        self.version = 0;
+        self.comment.clear();
+        self.a_mem.clear();
+        self.b_mem.clear();
+        self.c_mem.clear();
+        self.type_map.clear();
+        self.pico_store.clear();
+    }
+
+    pub fn load(&mut self, path: &str) -> Result<(), MicrocodeError> {
+        self.reset();
+
+        self.path = Some(path.to_string());
+
+        let p = Path::new(path);
+        let file = File::open(&p)?;
+
+        self.read_header(&file)?;
+        self.read_version(&file)?;
+        self.read_comment(&file)?;
+        self.read_a_mem(&file)?;
+        self.read_b_mem(&file)?;
+        self.read_c_mem(&file)?;
+        self.read_type_map(&file)?;
+        self.read_pico_store_or_eof(&file)?;
 
         Ok(())
     }
 
     /// Read and validate the microcode header.
-    fn read_header(&mut self) -> Result<(), MicrocodeError> {
+    fn read_header(&mut self, mut file: &File) -> Result<(), MicrocodeError> {
         // Grab the section ID
-        let sec = read_u8!(self.file);
+        let sec = read_u8!(file);
         if sec != SEC_HEADER {
             return Err(MicrocodeError::InvalidHeader);
         }
 
         // Grab the header magic number
-        let header = read_u8!(self.file);
+        let header = read_u8!(file);
         if header != HEADER_MAGIC {
             return Err(MicrocodeError::InvalidHeader);
         }
@@ -490,33 +509,33 @@ impl<'a> Microcode<'a> {
     }
 
     /// Read the microcode version
-    fn read_version(&mut self) -> Result<(), MicrocodeError> {
+    fn read_version(&mut self, mut file: &File) -> Result<(), MicrocodeError> {
         // Grab the section ID
-        let sec = read_u8!(self.file);
+        let sec = read_u8!(file);
         if sec != SEC_VERSION {
             return Err(MicrocodeError::InvalidVersion);
         }
 
         // Grab the version
-        self.version = read_u16!(self.file);
+        self.version = read_u16!(file);
 
         Ok(())
     }
 
     /// Read the microcode text comment
-    fn read_comment(&mut self) -> Result<(), MicrocodeError> {
+    fn read_comment(&mut self, mut file: &File) -> Result<(), MicrocodeError> {
         let mut sec = [0; 1];
-        self.file.read_exact(&mut sec)?;
+        file.read_exact(&mut sec)?;
         if sec[0] != SEC_COMMENT {
             return Err(MicrocodeError::InvalidComment);
         }
 
         let mut len_buf = [0; 1];
-        self.file.read_exact(&mut len_buf)?;
+        file.read_exact(&mut len_buf)?;
 
         let mut char_buf = [0; 1];
         for _ in 0..len_buf[0] as usize {
-            self.file.read_exact(&mut char_buf)?;
+            file.read_exact(&mut char_buf)?;
             self.comment.push(char_buf[0] as char);
         }
 
@@ -524,37 +543,37 @@ impl<'a> Microcode<'a> {
     }
 
     /// Read A Memory
-    fn read_a_mem(&mut self) -> Result<(), MicrocodeError> {
-        self.read_a_or_b_mem(SEC_AMEM)
+    fn read_a_mem(&mut self, file: &File) -> Result<(), MicrocodeError> {
+        self.read_a_or_b_mem(file, SEC_AMEM)
     }
 
     /// Read B Memory
-    fn read_b_mem(&mut self) -> Result<(), MicrocodeError> {
-        self.read_a_or_b_mem(SEC_BMEM)
+    fn read_b_mem(&mut self, file: &File) -> Result<(), MicrocodeError> {
+        self.read_a_or_b_mem(file, SEC_BMEM)
     }
 
     /// Common function used by A and B Memory reads
-    fn read_a_or_b_mem(&mut self, mic_sec: u8) -> Result<(), MicrocodeError> {
-        let sec = read_u8!(self.file);
+    fn read_a_or_b_mem(&mut self, mut file: &File, mic_sec: u8) -> Result<(), MicrocodeError> {
+        let sec = read_u8!(file);
         if sec != mic_sec {
             return Err(MicrocodeError::InvalidABMem);
         }
 
         loop {
-            let count = read_u16!(self.file);
+            let count = read_u16!(file);
 
             // A 0 count marks the end of A or B memory
             if count == 0 {
                 break;
             }
 
-            let start = read_u16!(self.file);
+            let start = read_u16!(file);
 
             for i in 0..count {
                 if mic_sec == SEC_AMEM {
-                    self.a_mem.push(read_abword!(start + i, self.file));
+                    self.a_mem.push(read_abword!(start + i, file));
                 } else {
-                    self.b_mem.push(read_abword!(start + i, self.file));
+                    self.b_mem.push(read_abword!(start + i, file));
                 }
             }
         }
@@ -563,29 +582,29 @@ impl<'a> Microcode<'a> {
     }
 
     /// Read C Memory
-    fn read_c_mem(&mut self) -> Result<(), MicrocodeError> {
-        let sec = read_u8!(self.file);
+    fn read_c_mem(&mut self, mut file: &File) -> Result<(), MicrocodeError> {
+        let sec = read_u8!(file);
         if sec != SEC_CMEM {
             return Err(MicrocodeError::InvalidCMem);
         }
 
         loop {
-            let count = read_u16!(self.file);
+            let count = read_u16!(file);
             // A 0 count marks the end of C memory
             if count == 0 {
                 break;
             }
 
-            let start = read_u16!(self.file);
+            let start = read_u16!(file);
 
             for i in 0..count {
-                self.c_mem.push(read_cword!(start + i, self.file));
+                self.c_mem.push(read_cword!(start + i, file));
 
                 // But there's more!
 
                 loop {
                     // Just consume them for now.
-                    let code = read_u8!(self.file);
+                    let code = read_u8!(file);
                     // Done reading extra bytes
                     if code == 0 {
                         break;
@@ -598,23 +617,23 @@ impl<'a> Microcode<'a> {
     }
 
     /// Read the type map
-    fn read_type_map(&mut self) -> Result<(), MicrocodeError> {
-        let sec = read_u8!(self.file);
+    fn read_type_map(&mut self, mut file: &File) -> Result<(), MicrocodeError> {
+        let sec = read_u8!(file);
         if sec != SEC_TYPEMAP {
             return Err(MicrocodeError::InvalidTypeMap);
         }
 
-        let ntypes = read_u16!(self.file);
-        let pad = read_u16!(self.file);
+        let ntypes = read_u16!(file);
+        let pad = read_u16!(file);
         if pad != 0 {
             return Err(MicrocodeError::InvalidTypeMap);
         }
 
         for _ in 0..ntypes {
-            self.type_map.push(TypeWord { data: read_u8!(self.file) });
+            self.type_map.push(TypeWord { data: read_u8!(file) });
         }
 
-        let type_map_end = read_u16!(self.file);
+        let type_map_end = read_u16!(file);
         if type_map_end != 0 {
             return Err(MicrocodeError::InvalidTypeMap);
         }
@@ -627,11 +646,11 @@ impl<'a> Microcode<'a> {
     /// This is a special case, likely not present in most microcode,
     /// so we also account for End-of-File here.
     ///
-    fn read_pico_store_or_eof(&mut self) -> Result<(), MicrocodeError> {
+    fn read_pico_store_or_eof(&mut self, mut file: &File) -> Result<(), MicrocodeError> {
         // Pico-Store is a special case. If we read an 8 we're done.
         // If we read a 10 we're not done.
 
-        let sec = read_u8!(self.file);
+        let sec = read_u8!(file);
         if sec == SEC_EOF {
             return Ok(());
         } else if sec != SEC_PICOSTORE {
@@ -639,15 +658,15 @@ impl<'a> Microcode<'a> {
         }
 
         for _ in 0..255 {
-            self.pico_store.push(read_pico_store_word!(self.file));
+            self.pico_store.push(read_pico_store_word!(file));
         }
 
-        let eos = read_u16!(self.file);
+        let eos = read_u16!(file);
         if eos != 0xffff {
             return Err(MicrocodeError::InvalidPicoStore);
         }
 
-        let eof = read_u8!(self.file);
+        let eof = read_u8!(file);
         if eof != SEC_EOF {
             return Err(MicrocodeError::InvalidPicoStoreEof);
         }
