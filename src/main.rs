@@ -99,7 +99,7 @@ fn do_dump(ucode: &mut Microcode, words: Vec<&str>) -> Result<HandlerResult, Han
 
 fn do_show(ucode: &mut Microcode, _words: Vec<&str>) -> Result<HandlerResult, HandlerError> {
     if ucode.path.is_some() {
-        println!("Loaded From:     {:?}", ucode.path);
+        println!("Loaded From:     {}", ucode.path());
         println!("Version:         {}", ucode.version);
         println!("Commend:         {}", ucode.comment);
         println!("A-Mem Size:      {} words", ucode.a_mem.len());
@@ -119,7 +119,7 @@ fn do_load(ucode: &mut Microcode, words: Vec<&str>) -> Result<HandlerResult, Han
         match ucode.load(words[1]) {
             Ok(()) => {
                 println!("Loaded file {}", ucode.path());
-            },
+            }
             Err(e) => {
                 println!("Cannot load file. {}", e);
             }
@@ -138,6 +138,7 @@ fn do_help() -> Result<HandlerResult, HandlerError> {
     println!("dump [file]         Disassemble to file.");
     println!("show                Show microcode overview.");
     println!("q,quit              Leave the shell.");
+
     Ok(HandlerResult::Handled)
 }
 
@@ -185,9 +186,9 @@ fn process_loop(ucode: &mut Microcode) {
                     Ok(_) => {
                         // Normal result. Continue looping.
                     }
-                    Err(HandlerError::Io(_)) => {
+                    Err(HandlerError::Io(e)) => {
                         // IO error. Display failure, keep looping.
-                        println!("Command failed.");
+                        println!("Command failed. {}", e);
                     }
                     Err(HandlerError::ParseError) => {
                         // Parse error. Display failure, keep looping.
@@ -209,10 +210,12 @@ fn main() {
         .version("1.0")
         .author("Seth Morabito <web@loomcom.com>")
         .about("Parses and displays details of Symbolics 3600 microcode")
-        .arg(Arg::with_name("file")
-             .short("f")
-             .help("Input file")
-             .takes_value(true))
+        .arg(
+            Arg::with_name("file")
+                .short("f")
+                .help("Input file")
+                .takes_value(true),
+        )
         .get_matches();
 
     let mut state = Microcode::new();
@@ -220,11 +223,9 @@ fn main() {
     let file = app.value_of("file");
 
     match file {
-        Some(f) => {
-            match state.load(f) {
-                Ok(()) => process_loop(&mut state),
-                Err(reason) => println!("Unable to parse microcode: {}", reason),
-            }
+        Some(f) => match state.load(f) {
+            Ok(()) => process_loop(&mut state),
+            Err(reason) => println!("Unable to parse microcode: {}", reason),
         },
         None => {
             process_loop(&mut state);

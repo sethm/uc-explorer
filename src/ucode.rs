@@ -17,7 +17,6 @@
 /// along with The Symbolics Microde Explorer.  If not, see
 /// <https://www.gnu.org/licenses/>.
 ///
-
 extern crate clap;
 extern crate shellexpand;
 
@@ -69,80 +68,77 @@ impl fmt::Display for MicrocodeError {
 //
 
 macro_rules! read_u8 {
-    ($file:expr) => {
-        {
-            let mut buf = [0;1];
-            $file.read_exact(&mut buf)?;
-            buf[0]
-        }
-    }
+    ($file:expr) => {{
+        let mut buf = [0; 1];
+        $file.read_exact(&mut buf)?;
+        buf[0]
+    }};
 }
 
 macro_rules! read_u16 {
-    ($file:expr) => {
-        {
-            let mut buf = [0;2];
-            $file.read_exact(&mut buf)?;
-            buf[0] as u16 | (buf[1] as u16) << 8
-        }
-    }
+    ($file:expr) => {{
+        let mut buf = [0; 2];
+        $file.read_exact(&mut buf)?;
+        buf[0] as u16 | (buf[1] as u16) << 8
+    }};
 }
 
 macro_rules! read_u32 {
-    ($file:expr) => {
-        {
-            let mut buf = [0;4];
-            $file.read_exact(&mut buf)?;
-            buf[0] as u32 | (buf[1] as u32) << 8 |
-            (buf[2] as u32) << 16 | (buf[3] as u32) << 24
-        }
-    }
+    ($file:expr) => {{
+        let mut buf = [0; 4];
+        $file.read_exact(&mut buf)?;
+        buf[0] as u32 | (buf[1] as u32) << 8 | (buf[2] as u32) << 16 | (buf[3] as u32) << 24
+    }};
 }
 
 macro_rules! read_abword {
-    ($address:expr, $file:expr) => {
-        {
-            let mut buf = [0; 5];
-            $file.read_exact(&mut buf)?;
-            ABWord {
-                address: $address,
-                data: (buf[0] as u64 | (buf[1] as u64) << 8 |
-                       (buf[2] as u64) << 16 | (buf[3] as u64) << 24 |
-                       (buf[4] as u64) << 32)
-
-            }
+    ($address:expr, $file:expr) => {{
+        let mut buf = [0; 5];
+        $file.read_exact(&mut buf)?;
+        ABWord {
+            address: $address,
+            data: (buf[0] as u64
+                | (buf[1] as u64) << 8
+                | (buf[2] as u64) << 16
+                | (buf[3] as u64) << 24
+                | (buf[4] as u64) << 32),
         }
-    }
+    }};
 }
 
 macro_rules! read_cword {
-    ($address:expr, $file:expr) => {
-        {
-            let mut buf = [0; 14];
-            $file.read_exact(&mut buf)?;
-            CWord::new($address,
-                       // Low 64 bits
-                       buf[0] as u64 | (buf[1] as u64) << 8 |
-                       (buf[2] as u64) << 16 | (buf[3] as u64) << 24 |
-                       (buf[4] as u64) << 32 | (buf[5] as u64) << 40 |
-                       (buf[6] as u64) << 48 | (buf[7] as u64) << 56,
-                       // High 64 bits
-                       buf[8] as u64 | (buf[9] as u64) << 8 |
-                       (buf[10] as u64) << 16 | (buf[11] as u64) << 24 |
-                       (buf[12] as u64) << 32 | (buf[13] as u64) << 40)
-        }
-    }
+    ($address:expr, $file:expr) => {{
+        let mut buf = [0; 14];
+        $file.read_exact(&mut buf)?;
+        CWord::new(
+            $address,
+            // Low 64 bits
+            buf[0] as u64
+                | (buf[1] as u64) << 8
+                | (buf[2] as u64) << 16
+                | (buf[3] as u64) << 24
+                | (buf[4] as u64) << 32
+                | (buf[5] as u64) << 40
+                | (buf[6] as u64) << 48
+                | (buf[7] as u64) << 56,
+            // High 64 bits
+            buf[8] as u64
+                | (buf[9] as u64) << 8
+                | (buf[10] as u64) << 16
+                | (buf[11] as u64) << 24
+                | (buf[12] as u64) << 32
+                | (buf[13] as u64) << 40,
+        )
+    }};
 }
 
 macro_rules! read_pico_store_word {
-    ($file:expr) => {
-        {
-            PicoStoreWord {
-                address: read_u16!($file),
-                data: read_u32!($file),
-            }
+    ($file:expr) => {{
+        PicoStoreWord {
+            address: read_u16!($file),
+            data: read_u32!($file),
         }
-    }
+    }};
 }
 
 const HEADER_MAGIC: u8 = 5;
@@ -181,38 +177,38 @@ impl CWord {
 /// All the fields of a Microinstruction
 #[allow(dead_code)]
 pub struct MicroInstruction {
-    u_amra: u16,           // bits 11-0:    A Mem Read Address (0-7777)
-    u_r_base: u8,          // bits 10-9:    A Mem R Base Register Select (0-3)
-    u_amra_sel: u8,        // bits 13-12:   A Mem Read Address interpretation (0-3)
-    u_xybus_sel: u8,       // bit  14:      X & Y Bus Select (0-1)
-    u_stkp_count: u8,      // bit  15:      Stack Pointer Count true/false (0-1)
-    u_amwa: u16,           // bits 27-16:   A Mem Write Address (0-7777)
-    lbus_dev: u16,         // bits 25-16:   LBUS dev (0-1777)
-    u_w_base: u8,          // bits 26-25:   A Mem W Base Register Select (0-3)
-    u_stkp_count_dir: u8,  // bit  27:      Same as bit 26 (0-1)
-    u_amwa_sel: u8,        // bits 29-28:   A Mem Write Address interpretation (0-3)
-    u_seq: u8,             // bits 31-30:   Sequencer Function (0-3)
-    u_bmra: u8,            // bits 39-32:   B Memory Read Address (0-377)
-    u_bmwa: u8,            // bits 43-40:   B Memory Write Address (0-17)
-    u_bmem_from_xbus: u8,  // bit  44:      B Memory Write Data Select (0-1)
-    u_mem: u8,             // bits 47-45:   Memory Control Function (0-7)
-    u_spec: u8,            // bits 52-48:   Special Function (0-37)
-    u_magic: u8,           // bits 56-53:   Magic Number (0-17)
-    u_cond_sel: u8,        // bits 61-57:   Condition Select (0-37)
-    u_cond_func: u8,       // bits 63-62:   Condition Function (0-3)
-    u_alu: u8,             // bits 67-64:   ALU Function (0-17)
-    u_byte_f: u8,          // bits 69-68:   Byte Function (0-3)
-    u_obus_cdr: u8,        // bits 72-70:   Obus CDR code select (0-7)
-    u_obus_htype: u8,      // bits 75-73:   Obus high type field select (0-7)
-    u_obus_ltype_sel: u8,  // bit  76:      Obus low type field select (0-1)
-    u_cpc_sel: u8,         // bits 78-77:   Next microprogram address select (0-3)
-    u_npc_sel: u8,         // bit  79:      Next next micro addres select (0-1)
-    u_naf: u16,            // bits 93-80:   Next Address Field (0-37777)
-    u_speed: u8,           // bits 95-94:   Clock speed control (0-3)
-    u_type_map_sel: u8,    // bits 101-96:  Type map select (0-77)
-    u_au_op: u8,           // bits 109-102: FPA control (0-377)
-    u_spare: u8,           // bit  110:     Spare bit
-    u_parity_bit: u8,      // bit  111:     Parity bit
+    u_amra: u16,          // bits 11-0:    A Mem Read Address (0-7777)
+    u_r_base: u8,         // bits 10-9:    A Mem R Base Register Select (0-3)
+    u_amra_sel: u8,       // bits 13-12:   A Mem Read Address interpretation (0-3)
+    u_xybus_sel: u8,      // bit  14:      X & Y Bus Select (0-1)
+    u_stkp_count: u8,     // bit  15:      Stack Pointer Count true/false (0-1)
+    u_amwa: u16,          // bits 27-16:   A Mem Write Address (0-7777)
+    lbus_dev: u16,        // bits 25-16:   LBUS dev (0-1777)
+    u_w_base: u8,         // bits 26-25:   A Mem W Base Register Select (0-3)
+    u_stkp_count_dir: u8, // bit  27:      Same as bit 26 (0-1)
+    u_amwa_sel: u8,       // bits 29-28:   A Mem Write Address interpretation (0-3)
+    u_seq: u8,            // bits 31-30:   Sequencer Function (0-3)
+    u_bmra: u8,           // bits 39-32:   B Memory Read Address (0-377)
+    u_bmwa: u8,           // bits 43-40:   B Memory Write Address (0-17)
+    u_bmem_from_xbus: u8, // bit  44:      B Memory Write Data Select (0-1)
+    u_mem: u8,            // bits 47-45:   Memory Control Function (0-7)
+    u_spec: u8,           // bits 52-48:   Special Function (0-37)
+    u_magic: u8,          // bits 56-53:   Magic Number (0-17)
+    u_cond_sel: u8,       // bits 61-57:   Condition Select (0-37)
+    u_cond_func: u8,      // bits 63-62:   Condition Function (0-3)
+    u_alu: u8,            // bits 67-64:   ALU Function (0-17)
+    u_byte_f: u8,         // bits 69-68:   Byte Function (0-3)
+    u_obus_cdr: u8,       // bits 72-70:   Obus CDR code select (0-7)
+    u_obus_htype: u8,     // bits 75-73:   Obus high type field select (0-7)
+    u_obus_ltype_sel: u8, // bit  76:      Obus low type field select (0-1)
+    u_cpc_sel: u8,        // bits 78-77:   Next microprogram address select (0-3)
+    u_npc_sel: u8,        // bit  79:      Next next micro addres select (0-1)
+    u_naf: u16,           // bits 93-80:   Next Address Field (0-37777)
+    u_speed: u8,          // bits 95-94:   Clock speed control (0-3)
+    u_type_map_sel: u8,   // bits 101-96:  Type map select (0-77)
+    u_au_op: u8,          // bits 109-102: FPA control (0-377)
+    u_spare: u8,          // bit  110:     Spare bit
+    u_parity_bit: u8,     // bit  111:     Parity bit
 }
 
 impl MicroInstruction {
@@ -339,9 +335,7 @@ impl fmt::Display for CWord {
         write!(
             f,
             "{:05o}> {:022o} {:022o}",
-            self.address,
-            self.data_h,
-            self.data_l
+            self.address, self.data_h, self.data_l
         )
     }
 }
@@ -392,7 +386,6 @@ impl fmt::Debug for MicroInstruction {
              U SPEED          {:o}\n\
              U TYPE MAP SEL   {:02o}\n\
              U AU OP          {:03o}\n",
-
             self.u_amra,
             self.u_r_base,
             self.u_amra_sel,
@@ -641,7 +634,9 @@ impl Microcode {
         }
 
         for _ in 0..ntypes {
-            self.type_map.push(TypeWord { data: read_u8!(file) });
+            self.type_map.push(TypeWord {
+                data: read_u8!(file),
+            });
         }
 
         let type_map_end = read_u16!(file);
