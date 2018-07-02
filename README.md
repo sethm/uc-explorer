@@ -10,6 +10,25 @@ Version 0.1.0
 
 Last Updated: 02-July-2018
 
+Compiling
+---------
+
+The Symbolics Microcode Explorer is written in
+[Rust](https://www.rust-lang.org/). The easiest way to get a Rust
+environment set up is with the `rustup` utility.  See:
+https://rustup.rs/
+
+To build, just type:
+
+    cargo build              # to build a debugging version
+
+or
+
+    cargo build --release    # to build a release version
+
+Output will be in the directory `uc-explorer/target/debug` or
+`uc-explorer/target/release`, depending on build type.
+
 Usage
 -----
 
