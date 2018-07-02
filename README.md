@@ -8,31 +8,39 @@ History
 
 Version 0.1.0
 
-Last Updated: 27-June-2018
+Last Updated: 02-July-2018
 
 Usage
 -----
 
 Symbolics Microcode Explorer is an interactive, command-driven program.
 
-It takes one argument, a microcode file:
+To start the program:
 
-    uc-explorer <microcode_file>
+    uc-explorer [-f <ucode_file>]
 
 From there, you are presented with a prompt:
 
     uc-explorer>
-    
-Valid commands are:
 
+Valid commands are:
 
   - **help**: Get a short help summary
   - **show**: Show summary info about the microcode file
-  - **dump &lt;filename&gt;**:  Disassemble and dump to a file
+  - **load &lt;filename&gt;**: Load a Microcode file
+  - **dump &lt;filename&gt;**: Disassemble and dump to a file
   - **quit**: Quit the program
-   
 
 WARNING: The disassembly process produces around 4.5MB of output!
+
+TODO
+----
+
+Plans on the horizon are:
+
+1. Full exploration of AMEM, BMEM, and CMEM using keystrokes
+   to navigate between words.
+2. Better disassembly format.
 
 License
 -------
