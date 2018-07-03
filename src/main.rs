@@ -34,7 +34,7 @@ use std::fs::File;
 use std::io;
 use std::io::Write;
 use std::vec::Vec;
-use ucode::{Microcode, MicrocodeError};
+use ucode::Microcode;
 
 struct Hints {}
 
@@ -46,9 +46,7 @@ impl Hinter for Hints {
 
 pub enum HandlerError {
     Io(io::Error),
-    Load(MicrocodeError),
     ParseError,
-    Terminal,
 }
 
 pub enum HandlerResult {
@@ -62,19 +60,11 @@ impl From<io::Error> for HandlerError {
     }
 }
 
-impl From<MicrocodeError> for HandlerError {
-    fn from(err: MicrocodeError) -> HandlerError {
-        HandlerError::Load(err)
-    }
-}
-
 impl fmt::Display for HandlerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             HandlerError::Io(ref err) => err.fmt(f),
-            HandlerError::Load(ref err) => err.fmt(f),
             HandlerError::ParseError => write!(f, "Parse Error"),
-            HandlerError::Terminal => write!(f, "Terminal Error"),
         }
     }
 }
@@ -179,12 +169,12 @@ fn process_loop(ucode: &mut Microcode) {
             Ok(line) => {
                 rl.add_history_entry(line.as_ref());
                 match handle_command(ucode, line.as_ref()) {
+                    Ok(HandlerResult::Handled) => {
+                        // Normal result. Continue looping.
+                    }
                     Ok(HandlerResult::Quit) => {
                         // Quit detected. Break from loop.
                         break;
-                    }
-                    Ok(_) => {
-                        // Normal result. Continue looping.
                     }
                     Err(HandlerError::Io(e)) => {
                         // IO error. Display failure, keep looping.
@@ -194,13 +184,12 @@ fn process_loop(ucode: &mut Microcode) {
                         // Parse error. Display failure, keep looping.
                         println!("?");
                     }
-                    Err(_) => {
-                        // Other error. Just break;
-                        break;
-                    }
                 }
             }
-            Err(_) => break,
+            Err(e) => {
+                println!("Unrecoverable error: {}", e);
+                break;
+            }
         }
     }
 }

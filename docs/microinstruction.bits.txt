@@ -46,7 +46,7 @@ previously a don't care. This is part of IFU/FPA compatability fix (Chas).
         2  Base register plus offset, within 1K bank selected by STACK BASE.
            U R BASE <1:0> selects the base, U AMRA <8:0> selects the offset.
         3  Abus source is not A-memory. If U R BASE <1:0> is 0 or 1, the
-           Abus source is the Stack Pointer or the Frame Eointer (28
+           Abus source is the Stack Pointer or the Frame Pointer (28
            bits). If U R BASE <1:0> is 3 the Abus source is something on
            the MC board selected by U AMRA <8:6>:
              For TMC5:

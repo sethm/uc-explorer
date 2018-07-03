@@ -179,6 +179,7 @@ impl CWord {
 pub struct MicroInstruction {
     u_amra: u16,          // bits 11-0:    A Mem Read Address (0-7777)
     u_r_base: u8,         // bits 10-9:    A Mem R Base Register Select (0-3)
+    u_abus_src: u8,       // bits 8-6:     ABus Source (0-7)
     u_amra_sel: u8,       // bits 13-12:   A Mem Read Address interpretation (0-3)
     u_xybus_sel: u8,      // bit  14:      X & Y Bus Select (0-1)
     u_stkp_count: u8,     // bit  15:      Stack Pointer Count true/false (0-1)
@@ -217,6 +218,7 @@ impl MicroInstruction {
             // Fields from the low 64-bits
             u_amra: (cword.data_l & 0xfff) as u16,
             u_r_base: ((cword.data_l >> 9) & 0x3) as u8,
+            u_abus_src: ((cword.data_l >> 6) & 0x7) as u8,
             u_amra_sel: ((cword.data_l >> 12) & 0x3) as u8,
             u_xybus_sel: ((cword.data_l >> 14) & 0x1) as u8,
             u_stkp_count: ((cword.data_l >> 15) & 0x1) as u8,
@@ -249,6 +251,40 @@ impl MicroInstruction {
             u_au_op: ((cword.data_h >> 38) & 0xff) as u8,
             u_spare: ((cword.data_h >> 46) & 0x1) as u8,
             u_parity_bit: ((cword.data_h >> 47) & 0x1) as u8,
+        }
+    }
+
+    fn amem_source(&self) -> String {
+        match self.u_abus_src {
+            0 => "Memory Data (MD)".to_string(),
+            1 => "Other Memory Data (OTHER-MD)".to_string(),
+            2 => "VMA".to_string(),
+            3 => "EPC".to_string(),
+            4 => "Memory Data Advance".to_string(),
+            5 => "PHTA-ASN/IIR".to_string(),
+            6 => "MAP".to_string(),
+            7 => "MAP #0".to_string(),
+            _ => "<INVALID>".to_string(),
+        }
+    }
+
+    fn amem_read_address(&self) -> String {
+        match self.u_amra_sel {
+            0 => format!("Immediate Address {:04o}", self.u_amra),
+            1 => format!("A-Memory Address {:04o}", self.u_amra),
+            2 => format!(
+                "Base Register {:02o} plus offset {:03o}",
+                self.u_r_base & 0x3,
+                self.u_amra & 0xff
+            ),
+            3 => match self.u_r_base {
+                0 => "Stack Pointer".to_string(),
+                1 => "Frame Pointer".to_string(),
+                2 => "Extra Base".to_string(),
+                3 => format!("Other Abus Source: {}", self.amem_source()),
+                _ => "<INVALID>".to_string(),
+            },
+            _ => "<INVALID>".to_string(),
         }
     }
 }
